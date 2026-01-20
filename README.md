@@ -25,7 +25,7 @@ After preprocessing, the pipeline performs epoching to segment the continuous da
 
 Before running the pipeline, make note of the following parameters in `preprocessing_meg.py`:
 
-**[Lines 25-32](preprocessing_meg.py#L25-L32)**
+**[Lines 25-32](scripts/preprocessing_meg.py#L25-L32)**
 
 ```python
 subj = 'R2611'  # Subject ID
@@ -43,7 +43,7 @@ Importantly, you will need to have the following directory structure: At the loc
 
 ### Epoch Configurations
 
-**[Lines 34-55](preprocessing_meg.py#L34-L55)**
+**[Lines 34-55](scripts/preprocessing_meg.py#L34-L55)**
 
 The pipeline supports different epoching configurations for different task types:
 
@@ -75,7 +75,7 @@ epoch_configs = {
 
 ### STEP 1: Loading Raw Data and Baseline SNR Calculation
 
-**Code Reference:** [`preprocessing_meg.py` Lines 84-107](preprocessing_meg.py#L84-L107)
+**Code Reference:** [`preprocessing_meg.py` Lines 84-107](scripts/preprocessing_meg.py#L84-L107)
 
 The pipeline begins by loading the raw MEG data files created from the mne-toolkit GUI. 
 
@@ -101,7 +101,7 @@ snr_response_global, snr_response_raw, _ = calculate_snr_response(temp_epochs_re
 
 **Example Output (Subject R2611):**
 
-![Terminal Output - Pipeline Start](images_for_readme/Screenshot_2026-01-19_at_8_22_41_PM.png)
+![Terminal Output - Pipeline Start](images_for_readme/Screenshot1.png)
 
 As shown in the terminal output above:
 - Loaded data from 2 raw files for subject R2611
@@ -112,7 +112,7 @@ As shown in the terminal output above:
 
 ### STEP 2: Frequency Filtering
 
-**Code Reference:** [`preprocessing_meg.py` Lines 110-123](preprocessing_meg.py#L110-L123)
+**Code Reference:** [`preprocessing_meg.py` Lines 110-123](scripts/preprocessing_meg.py#L110-L123)
 
 As you can see, the first edit to the data comes from applying a bandpass filter is to remove frequencies outside a safe range of interest (1-40 Hz), which helps eliminate slow drifts and high-frequency noise (generally from movement artifactts). 
 
@@ -124,8 +124,8 @@ And the SNR is recalculated for both onset and response epochs.
 
 The raw data is then displayed in an interactive plot for initial inspection and the removal of bad channels:
 
-![Raw MEG Data - Channels 002-021](images_for_readme/Screenshot_2026-01-19_at_8_21_17_PM.png)
-![Raw MEG Data - Channels 070-089](images_for_readme/Screenshot_2026-01-19_at_8_21_41_PM.png)
+![Raw MEG Data - Channels 002-021](images_for_readme/Screenshot2.png)
+![Raw MEG Data - Channels 070-089](images_for_readme/Screenshot3.png)
 
 ---
 
@@ -133,9 +133,11 @@ The raw data is then displayed in an interactive plot for initial inspection and
 
 Now that you can get a sense for the visualization of the data, it is a good time to review how the Signal-to-Noise Ratio is calculated throughout the pipeline (and how it was already calculated for the baseline and to measure the effect of the bandpass filtering). The SNR calculation is handled by the `snr_both.py` script.
 
+### This SNR calculation was inspired by [Gonzalez-Moreno et al., 2014](#gonzalez2014).
+
 ### SNR Calculation Methodology
 
-**Code Reference:** [`snr_both.py` Lines 250-309](snr_both.py#L250-L309) (Onset) and [Lines 312-371](snr_both.py#L312-L371) (Response)
+**Code Reference:** [`snr_both.py` Lines 250-309](scripts/snr_both.py#L250-L309) (Onset) and [Lines 312-371](scripts/snr_both.py#L312-L371) (Response)
 
 The SNR calculation creates separate analyses for the onset (stimulus-locked) and response (response-locked) epochs:
 
@@ -182,18 +184,16 @@ The pipeline calculates two SNR values at each stage. Both SNRs are basically do
 
 2. **Global SNR (top 20%):** The mean of the top 20% of SNR values, providing a more robust estimate focused on the strongest signals
    
-   **[Lines 302-304](snr_both.py#L302-L304)**
+   **[Lines 302-304](scripts/snr_both.py#L302-L304)**
    ```python
    threshold_idx = int((1 - top_percentile) * len(flat_snrs))
    top_snrs = np.partition(flat_snrs, threshold_idx)[threshold_idx:]
    global_snr = np.mean(top_snrs)
    ```
 
-### This SNR calculation was inspired by [Gonzales-Moreno et al., 2014]. 
-
 ### SNR Tracking System
 
-**Code Reference:** [`snr_both.py` Lines 12-66](snr_both.py#L12-L66)
+**Code Reference:** [`snr_both.py` Lines 12-66](scripts/snr_both.py#L12-L66)
 
 The `SNRTracker` class maintains a comprehensive record of SNR improvements throughout preprocessing:
 
@@ -206,15 +206,15 @@ class SNRTracker:
 ```
 
 For each preprocessing stage, the tracker records:
-- Absolute SNR values for both onset and response epochs **[Lines 21-37](snr_both.py#L21-L37)**
-- Delta SNR (change from previous stage) **[Lines 38-51](snr_both.py#L38-L51)**
-- Relative contribution to total improvement (percentage) **[Lines 52-63](snr_both.py#L52-L63)**
+- Absolute SNR values for both onset and response epochs **[Lines 21-37](scripts/snr_both.py#L21-L37)**
+- Delta SNR (change from previous stage) **[Lines 38-51](scripts/snr_both.py#L38-L51)**
+- Relative contribution to total improvement (percentage) **[Lines 52-63](scripts/snr_both.py#L52-L63)**
 
 ### Temporary Epochs Creation
 
 **Code Reference:** 
-- Onset epochs: [`snr_both.py` Lines 374-405](snr_both.py#L374-L405)
-- Response epochs: [`snr_both.py` Lines 408-439](snr_both.py#L408-L439)
+- Onset epochs: [`snr_both.py` Lines 374-405](scripts/snr_both.py#L374-L405)
+- Response epochs: [`snr_both.py` Lines 408-439](scripts/snr_both.py#L408-L439)
 
 At each preprocessing stage, temporary epochs are created specifically for SNR calculation:
 
@@ -242,7 +242,7 @@ def create_temp_epochs_onset(raw):
 
 ### STEP 3: Bad Channel Detection and Interpolation
 
-**Code Reference:** [`preprocessing_meg.py` Lines 125-154](preprocessing_meg.py#L125-L154)
+**Code Reference:** [`preprocessing_meg.py` Lines 125-154](scripts/preprocessing_meg.py#L125-L154)
 
 These plots show the continuous MEG recordings across all channels. You can and should use the arrow keys to move across all channels and timepoints for thorough inspection. As you can see, channels 015 and 079 have been removed (they are greyed out). Channel 015 is far too noisy (at a later timepoint) while Channel 079 is far too flat. 
 
@@ -253,7 +253,7 @@ These plots show the continuous MEG recordings across all channels. You can and 
 
 **Example Output:**
 
-![Terminal Output - After Bad Channel Interpolation](images_for_readme/Screenshot_2026-01-19_at_8_23_53_PM.png)
+![Terminal Output - After Bad Channel Interpolation](images_for_readme/Screenshot4.png)
 
 
 ### STEP 4: Radio Noise Removal
@@ -262,7 +262,7 @@ For now, we will skip this step as it does not occur enough to include in the pr
 
 ### STEP 5: Empty Room Projection
 
-**Code Reference:** [`preprocessing_meg.py` Lines 222-270](preprocessing_meg.py#L222-L270)
+**Code Reference:** [`preprocessing_meg.py` Lines 222-270](scripts/preprocessing_meg.py#L222-L270)
 
 Environmental noise is characterized using an empty room recording (no subject present) and removed from the data using signal space projection (SSP).
 
@@ -295,19 +295,21 @@ raw.apply_proj()
 
 **Example Output:**
 
-![Terminal Output - Empty Room Projection](images_for_readme/Screenshot_2026-01-19_at_8_25_38_PM.png)
+![Terminal Continues to run ICA](images_for_readme/Screenshot5.png)
 
 The pipeline creates 3 PCA-based noise projectors from the empty room data:
 
-![PCA Topographies](images_for_readme/Screenshot_2026-01-19_at_8_23_53_PM.png)
+![PCA Topographies](images_for_readme/Screenshot5)
 
-These topographies show the spatial patterns of environmental noise picked up by the empty room projection. 
+These topographies show the spatial patterns of environmental noise picked up by the empty room projection. Once you close the tab of these topographies, the script can continue. 
+
+![Terminal Continues to run ICA](images_for_readme/Screenshot6.png)
 
 ---
 
 ### STEP 6: ICA Artifact Removal
 
-**Code Reference:** [`preprocessing_meg.py` Lines 272-308](preprocessing_meg.py#L272-L308)
+**Code Reference:** [`preprocessing_meg.py` Lines 272-308](scripts/preprocessing_meg.py#L272-L308)
 
 Independent Component Analysis (ICA) decomposes the data into statistically independent components, allowing identification and removal of artifacts such as eye blinks, heartbeats, and muscle activity.
 
@@ -333,37 +335,40 @@ raw = ica.apply(raw)
 
 **Example Output:**
 
-![Terminal Output - ICA Start](images_for_readme/Screenshot_2026-01-19_at_8_27_08_PM.png)
+![Terminal Output - ICA Start](images_for_readme/Screenshot7.png)
 
 The user is prompted to review ICA components:
 
 **ICA Component Time Courses:**
 
-![ICA Components 000-019](images_for_readme/Screenshot_2026-01-19_at_8_28_16_PM.png)
+![ICA Components 000-019](images_for_readme/Screenshot8.png)
 
 **More ICA Components:**
 
-![ICA Components 006-025](images_for_readme/Screenshot_2026-01-19_at_8_28_34_PM.png)
+![ICA Components 006-025](images_for_readme/Screenshot9.png)
 
 **ICA Component Topographies:**
 
-![ICA Topographies 000-019](images_for_readme/Screenshot_2026-01-19_at_8_29_26_PM.png)
+![ICA Topographies 000-019](images_for_readme/Screenshot10.png)
 
 
-![ICA Topographies 020-025](images_for_readme/Screenshot_2026-01-19_at_8_29_57_PM.png)
+![ICA Topographies 020-025](images_for_readme/Screenshot11.png)
 
 For subject R2611, components **[1, 6]** were marked for exclusion. These components are cardiovascular artifacts, which you can identify by the heart-beat-like frequency of their plotted recordings. 
 
 ### Important Note: 
 Most EEG/MEG preprocessing literature states that we should also remove ocular artifacts (eyeblinks and saccades), which you can best identify from artifacts where the topographies that show activities around the frequency plots show sharp, inconsistent spikes. However, we used this SNR analysis to measure the effect of removing cardiovascular and ocular artifacts. On average and quite consistently across our participants, removing cardiovascular artifacts increased the SNR, while removing the ocular artifacts decreased the SNR. This makes sense given that we are running a visual task, and certain ocular behavior might actually be relevant to the overall signal quality within the onset and offset epochs. 
 
-**Terminal Output After ICA:**
 
-![ICA Completion](images_for_readme/Screenshot_2026-01-19_at_8_30_32_PM.png)
+**Terminal Output After ICA:**
+Once you have selected the artifacts to remove, close the tabs and press enter in following Terminal stream:
+
+![ICA Completion](images_for_readme/Screenshot12.png)
 
 **Final Data Review:**
+This will generate the following plot of the raw continuous, cleaned data:
 
-![Cleaned MEG Data](images_for_readme/Screenshot_2026-01-19_at_8_31_34_PM.png)
+![Cleaned MEG Data](images_for_readme/Screenshot13.png)
 
 The cleaned data is displayed for final inspection. Note the smoother signals and reduced artifacts compared to the raw data shown in Step 1. Channel MEG 015 remains grayed out as a record of interpolation.
 
@@ -371,42 +376,42 @@ The cleaned data is displayed for final inspection. Note the smoother signals an
 
 ## Final SNR Summary
 
-**Code Reference:** [`preprocessing_meg.py` Lines 313-319](preprocessing_meg.py#L313-L319) (Save), [`snr_both.py` Lines 182-215](snr_both.py#L182-L215) (Calculate)
+**Code Reference:** [`preprocessing_meg.py` Lines 313-319](scripts/preprocessing_meg.py#L313-L319) (Save), [`snr_both.py` Lines 182-215](scripts/snr_both.py#L182-L215) (Calculate)
 
 After all preprocessing steps are complete, the pipeline calculates and displays the cumulative improvements:
 
-![SNR Summary](images_for_readme/Screenshot_2026-01-19_at_8_32_53_PM.png)
+![SNR Summary](images_for_readme/Screenshot14.png)
 
 ---
 
 ## Epoching Process
 
-**Code Reference:** [`preprocessing_meg.py` Lines 326-578](preprocessing_meg.py#L326-L578)
+**Code Reference:** [`preprocessing_meg.py` Lines 326-578](scripts/preprocessing_meg.py#L326-L578)
 
 After preprocessing, the continuous data is segmented into epochs for trial-based analysis.
 
-![Epoching Start](images_for_readme/Screenshot_2026-01-19_at_8_33_18_PM.png)
+![Epoching Start](images_for_readme/Screenshot15.png)
 
 ### Process Steps
 
-1. **Load preprocessed data** ([Lines 346-350](preprocessing_meg.py#L346-L350))
+1. **Load preprocessed data** ([Lines 346-350](scripts/preprocessing_meg.py#L346-L350))
    ```python
    raw = mne.io.read_raw_fif(raw_path, preload=True)
    events = mne.find_events(raw, min_duration=0.0025)
    ```
 
-2. **Photodiode realignment** ([Lines 370-372](preprocessing_meg.py#L370-L372))
+2. **Photodiode realignment** ([Lines 370-372](scripts/preprocessing_meg.py#L370-L372))
    ```python
    if configs["photodiode_realignment"]:
        events[:, 0] += 60  # 60ms delay compensation
    ```
 
-3. **Load behavioral logfile** ([Line 375](preprocessing_meg.py#L375))
+3. **Load behavioral logfile** ([Line 375](scripts/preprocessing_meg.py#L375))
    ```python
    logfile = pd.read_csv(f'{data_dir}/{subj}_logfile.csv')
    ```
 
-4. **Filter events** ([Lines 380-420](preprocessing_meg.py#L380-L420))
+4. **Filter events** ([Lines 380-420](scripts/preprocessing_meg.py#L380-L420))
    - For localizer: separate onset (161) and offset (164) events
    - Keep only trials with responses
    - Keep only correct trials (accuracy = True)
@@ -416,7 +421,7 @@ After preprocessing, the continuous data is segmented into epochs for trial-base
    events_164 = events[events[:, 2] == 164]  # Offset events
    ```
 
-5. **Create epochs with rejection criteria** ([Lines 429-454](preprocessing_meg.py#L429-L454))
+5. **Create epochs with rejection criteria** ([Lines 429-454](scripts/preprocessing_meg.py#L429-L454))
    ```python
    epochs_onset = mne.Epochs(
        raw, filtered_events_161, 
@@ -428,19 +433,19 @@ After preprocessing, the continuous data is segmented into epochs for trial-base
    )
    ```
 
-6. **Epoch rejection analysis** ([Lines 456-533](preprocessing_meg.py#L456-L533))
+6. **Epoch rejection analysis** ([Lines 456-533](scripts/preprocessing_meg.py#L456-L533))
    - Identifies epochs exceeding rejection criteria
    - Removes bad trials from both onset and response epochs
    - Ensures equal trial counts across epoch types
 
-7. **Save epochs** ([Lines 551-574](preprocessing_meg.py#L551-L574))
+7. **Save epochs** ([Lines 551-574](scripts/preprocessing_meg.py#L551-L574))
    - `.fif` format for MNE compatibility
    - `.mat` format for MATLAB analysis
    - Filtered logfile with trial metadata
 
 ### Example Output
 
-![Epoching Results](images_for_readme/Screenshot_2026-01-19_at_8_34_04_PM.png)
+![Epoching Results](images_for_readme/Screenshot16.png)
 
 ---
 
@@ -468,4 +473,4 @@ The pipeline generates the following files in the `preprocessing/` directory:
 
 ## References
 
-- Alicia Gonzalez-Moreno, Sara Aurtenetxe, Maria-Eugenia Lopez-Garcia, Francisco del Pozo, Fernando Maestu, Angel Nevado. Signal-to-noise ratio of the MEG signal after preprocessing. Journal of Neuroscience Methods, 2014. 
+- <a id="gonzalez2014"></a>Gonzalez-Moreno, A., Aurtenetxe, S., Lopez-Garcia, M.E., del Pozo, F., Maestu, F., & Nevado, A. (2014). [Signal-to-noise ratio of the MEG signal after preprocessing](https://www.sciencedirect.com/science/article/abs/pii/S0165027013003713). *Journal of Neuroscience Methods*, 235, 78-87.
