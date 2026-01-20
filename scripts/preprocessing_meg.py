@@ -22,9 +22,9 @@ print("Starting MEG preprocessing pipeline...")
 # CONFIGURATION
 # ============================================================================
 
-subj = 'R2649'
-dtypes = ['localizer']  # localizer / main
-epoching_types = ['localizer']
+subj = 'R2611' #  id of participant whose data you want to preprocess
+dtypes = ['localizer']  #  choose between localizer / main
+epoching_types = ['localizer']  #  choose between localizer / main
 base_dir = f'/Users/dariushnashat/Documents/Mattar Lab Internship/' 
 data_dir = os.path.join(base_dir, subj)
 empty_room_file = f'{data_dir}/raw/{subj}_EmptyRoom_nr.sqd'
@@ -34,7 +34,7 @@ epochsonly = False
 # Epoch configurations for different task types
 epoch_configs = {
     'localizer': {
-        "event_ids": {'161': 161, '164': 164},
+        "event_ids": {'161': 161, '164': 164},  #  in this case, 161 event is the onset and 164 event is the offset
         "tmin_161": -0.1, "tmax_161": 1.0, "baseline_161": (-0.1, 0),
         "tmin_164": -1.0, "tmax_164": 0.1, "baseline_164": (-1.0, -0.9),
         "decim": 1,
@@ -232,6 +232,10 @@ for dtype in dtypes:
             
             # Apply same filtering
             empty_room_raw.filter(1, 40, method='iir')
+
+            # Mark the same bad channels in empty room data
+            empty_room_raw.info['bads'] = raw.info['bads'].copy()
+            print(f"  Marked bad channels in empty room: {empty_room_raw.info['bads']}")
             
             # Compute noise projectors
             print("  Computing environmental noise projectors...")
