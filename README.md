@@ -299,7 +299,7 @@ raw.apply_proj()
 
 The pipeline creates 3 PCA-based noise projectors from the empty room data:
 
-![PCA Topographies](images_for_readme/Screenshot5)
+![PCA Topographies](images_for_readme/Screenshot5.png)
 
 These topographies show the spatial patterns of environmental noise picked up by the empty room projection. Once you close the tab of these topographies, the script can continue. 
 
