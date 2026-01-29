@@ -471,6 +471,16 @@ The pipeline generates the following files in the `preprocessing/` directory:
 
 ---
 
+## Systematic SNR Visualization
+
+Below are visualizations of the SNR change throughout this pipeline for the data of 27 of our participants, for both onset epochs and response epochs:
+
+![Onset Epochs](images_for_readme/onset_line_chart.png)
+
+![Response Epochs](images_for_readme/response_line_chart.png)
+
+---
+
 ## References
 
 - <a id="gonzalez2014"></a>Gonzalez-Moreno, A., Aurtenetxe, S., Lopez-Garcia, M.E., del Pozo, F., Maestu, F., & Nevado, A. (2014). [Signal-to-noise ratio of the MEG signal after preprocessing](https://www.sciencedirect.com/science/article/abs/pii/S0165027013003713). *Journal of Neuroscience Methods*, 235, 78-87.
