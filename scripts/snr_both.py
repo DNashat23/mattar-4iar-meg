@@ -161,21 +161,25 @@ class SNRTracker:
         self.current_row[f'{epoch_type}_final_snr'] = snr_values[-1]
         self.current_row[f'{epoch_type}_total_improvement'] = snr_values[-1] - snr_values[0]
         
-        # Calculate relative contributions (as percentages)
-        total_improvement = self.current_row[f'{epoch_type}_total_improvement']
-        
-        if total_improvement != 0:
-            rel_mapping = {
-                f'{epoch_type}_delta_filtering': f'{epoch_type}_rel_filtering_pct',
-                f'{epoch_type}_delta_interpolation': f'{epoch_type}_rel_interpolation_pct',
-                f'{epoch_type}_delta_radio_noise': f'{epoch_type}_rel_radio_noise_pct',
-                f'{epoch_type}_delta_empty_room': f'{epoch_type}_rel_empty_room_pct',
-                f'{epoch_type}_delta_ica': f'{epoch_type}_rel_ica_pct'
-            }
-            
+        # Calculate relative contributions (as percentages of total gross movement)
+        rel_mapping = {
+            f'{epoch_type}_delta_filtering': f'{epoch_type}_rel_filtering_pct',
+            f'{epoch_type}_delta_interpolation': f'{epoch_type}_rel_interpolation_pct',
+            f'{epoch_type}_delta_radio_noise': f'{epoch_type}_rel_radio_noise_pct',
+            f'{epoch_type}_delta_empty_room': f'{epoch_type}_rel_empty_room_pct',
+            f'{epoch_type}_delta_ica': f'{epoch_type}_rel_ica_pct'
+        }
+
+        delta_values = [
+            self.current_row[d] for d in rel_mapping
+            if not pd.isna(self.current_row[d])
+        ]
+        sum_abs_deltas = sum(abs(v) for v in delta_values)
+
+        if sum_abs_deltas > 0:
             for delta_col, rel_col in rel_mapping.items():
                 if not pd.isna(self.current_row[delta_col]):
-                    contribution = (self.current_row[delta_col] / total_improvement) * 100
+                    contribution = (self.current_row[delta_col] / sum_abs_deltas) * 100
                     self.current_row[rel_col] = round(contribution, 2)
                     print(f"  {epoch_type.capitalize()} relative contribution {delta_col}: {contribution:.2f}%")
     
@@ -371,15 +375,17 @@ def calculate_snr_response(epochs, time_window=None, top_percentile=0.2):
     return global_snr, raw_snr, snrs
 
 
-def create_temp_epochs_onset(raw):
+def create_temp_epochs_onset(raw, onset_event_id=161):
     """
     Create temporary onset epochs for SNR calculation
-    
+
     Parameters:
     -----------
     raw : mne.io.Raw
         Raw data object
-    
+    onset_event_id : int
+        Event ID to epoch around. 161 for localizer, 163 for main.
+
     Returns:
     --------
     temp_epochs : mne.Epochs
@@ -388,20 +394,20 @@ def create_temp_epochs_onset(raw):
     events = mne.find_events(raw, min_duration=0.0025)
     events[:, 0] += 60
     picks_meg = mne.pick_types(raw.info, meg=True, eeg=False, eog=False, stim=False)
-    
-    events_filtered = events[events[:, 2] == 161]
+
+    events_filtered = events[events[:, 2] == onset_event_id]
     temp_epochs = mne.Epochs(
         raw, events_filtered,
-        event_id={'161': 161},
+        event_id={str(onset_event_id): onset_event_id},
         tmin=-0.1, tmax=1.0,
         baseline=(-0.1, 0),
         picks=picks_meg,
         decim=1,
-        preload=True, 
-        reject=None, 
+        preload=True,
+        reject=None,
         verbose=False
     )
-    
+
     return temp_epochs
 
 
@@ -422,7 +428,7 @@ def create_temp_epochs_response(raw):
     events = mne.find_events(raw, min_duration=0.0025)
     events[:, 0] += 60
     picks_meg = mne.pick_types(raw.info, meg=True, eeg=False, eog=False, stim=False)
-    
+
     events_filtered = events[events[:, 2] == 164]
     temp_epochs = mne.Epochs(
         raw, events_filtered, 
