@@ -14,7 +14,7 @@ The pipeline has two stages, run as separate scripts:
    bad channels, removes environmental noise via an empty-room projection,
    and runs ICA to remove artifacts (eye blinks, heartbeats, muscle activity).
    Produces one cleaned, continuous raw `.fif` file per subject/task.
-2. **`single_subject_ar_v3.py`** (localizer) / **`single_subject_ar_v3_main.py`**
+2. **`single_subject_ar_v3_independent.py`** (localizer) / **`single_subject_ar_v3_main.py`**
    (main task) — load that cleaned raw file, epoch it around task events, and
    run [AutoReject](https://autoreject.github.io/) to reject or repair bad
    trials/channels per epoch.
@@ -88,21 +88,58 @@ onset_event_ids = {'localizer': 161, 'main': 163}   # response is always 164
    `ica.plot_components()` let you review and mark artifact components
    interactively; marked components are removed with `ica.apply()`.
 
+### Handling radio noise
+
+While reviewing the data for bad channels in step 3 — or from a prior note
+that a subject's recording is contaminated — if you notice radio noise,
+**exit `preprocessing_meg.py` and run `remove_radio_noise.py` instead.** It
+replaces `preprocessing_meg.py` entirely for that subject/task and produces
+the same final raw output (see Outputs below) that AutoReject expects
+downstream.
+
+It follows the exact same pipeline (load → filter → interpolate bad channels
+→ empty-room projection → ICA), with one extra step inserted right before bad
+channel marking: `raw.plot(block=True)` opens with the plot ready for
+annotation — press **`a`** to enter annotation mode, then click-and-drag
+across each contaminated segment to mark it `BAD`. If there's no radio noise
+after all, just close the window without marking anything and the script
+proceeds using the raw data unchanged.
+
+**Annotations must fully contain any trial they touch** — an annotation
+can't cut a trial in half. Concretely: if an annotation's first captured
+trigger is a response (meaning that trial's own onset trigger falls *before*
+the annotation start) or its last captured trigger is an onset whose paired
+response falls *after* the annotation end, the script exits with an error
+listing exactly which timepoint to extend that annotation to. It checks
+every annotation before exiting, not just the first bad one, so you get every
+fix needed in one pass — restart the script and redraw all annotations with
+the suggested corrections applied. Annotations with no trial triggers inside
+them are left alone.
+
+Once every annotation is valid, the contaminated segments are physically
+cropped out and the remaining clean segments concatenated back together; the
+logfile is filtered to match (`{subj}_{dtype}_nr_filtered_logfile.csv`), and
+the pipeline continues into bad-channel marking as normal.
+
 ### Outputs (in `preprocessing/`)
+
+The final cleaned raw file's name depends on `dtype`, matching what each
+Stage 2 script expects (see below): **localizer** → `{subj}_localizer_ICA-raw_final.fif`,
+**main** → `{subj}_main_ICA_no_ocular-raw.fif`.
 
 | File | Contents |
 |---|---|
-| `{subj}_{dtype}_ICA_no_ocular-raw.fif` | Final cleaned, continuous raw data |
+| `{subj}_localizer_ICA-raw_final.fif` / `{subj}_main_ICA_no_ocular-raw.fif` | Final cleaned, continuous raw data |
 | `{subj}_{dtype}_icasolution-ica.fif` | Fitted ICA solution |
 | `{subj}_{dtype}_bad_channels.p` | List of interpolated channel names |
 | `{subj}_{dtype}-info.p` | Final `raw.info`, pickled |
 | `snr_analysis_master.csv` (in `base_dir`) | SNR at every stage, every subject |
 
 If a file exceeds MNE's ~2GB single-file limit, it's split automatically into
-`..._ICA_no_ocular-raw.fif` + `..._ICA_no_ocular-raw-1.fif`. This is
-transparent — loading the base filename with `mne.io.read_raw_fif()` reads
-the full recording automatically as long as both files stay in the same
-folder.
+the base filename above plus a `-1` suffixed continuation (e.g.
+`..._ICA-raw_final.fif` + `..._ICA-raw_final-1.fif`). This is transparent —
+loading the base filename with `mne.io.read_raw_fif()` reads the full
+recording automatically as long as both files stay in the same folder.
 
 ---
 
@@ -134,31 +171,47 @@ values for every subject into `snr_analysis_master.csv` in `base_dir`.
 
 ## Stage 2: Epoching + AutoReject
 
-`single_subject_ar_v3.py` and `single_subject_ar_v3_main.py` are designed to
-be run non-interactively (e.g. from a SLURM job array):
+`single_subject_ar_v3_independent.py` and `single_subject_ar_v3_main.py` are
+designed to be run non-interactively (e.g. from a SLURM job array):
 
 ```
-python single_subject_ar_v3.py      --subject R2611 --base_dir /path/to/data
-python single_subject_ar_v3_main.py --subject R2611 --base_dir /path/to/data
+python single_subject_ar_v3_independent.py --subject R2611 --base_dir /path/to/data
+python single_subject_ar_v3_main.py        --subject R2611 --base_dir /path/to/data
 ```
 
-Both load `{subj}_{dtype}_ICA_no_ocular-raw.fif`, find events, filter trials
-against the subject's logfile, build epochs, and run `AutoReject` (grid
-search over `n_interpolate` and `consensus`, Bayesian-optimized) to reject or
-repair individual trial/channel combinations.
+Both find events, filter trials against the subject's logfile, build epochs,
+and run `AutoReject` (grid search over `n_interpolate` and `consensus`,
+Bayesian-optimized) to reject or repair individual trial/channel
+combinations. `single_subject_ar_v3_main.py` loads
+`{subj}_main_ICA_no_ocular-raw.fif`; `single_subject_ar_v3_independent.py`
+loads `{subj}_localizer_ICA-raw_final.fif` — see Stage 1's Outputs section
+for why the localizer and main raw files are named differently.
 
-### Localizer (`single_subject_ar_v3.py`)
+### Localizer (`single_subject_ar_v3_independent.py`)
 
 - Keeps only **correct** trials with a response.
 - Builds two epoch sets: **onset** (`161`, `-0.1s → 1.0s`) and **response**
-  (`164`, `-1.0s → 0.1s`), run through AutoReject independently.
-- **Trial pairing is enforced**: if AutoReject rejects a trial in one epoch
-  set but not the other, the corresponding trial is dropped from the other
-  set too, so onset and response epochs always contain the same trials.
+  (`164`, `-1.0s → 0.1s`).
+- **Onset and response are rejected fully independently** by AutoReject: a
+  trial being rejected in one stream does *not* force the other stream's
+  epoch for that trial to be dropped too, so the two saved epoch sets are
+  generally different lengths. Each trial's independent survivability is
+  recorded on the filtered logfile via `include_onset_epoch` /
+  `include_response_epoch` (`yes`/`no`).
 - Baseline correction is applied manually (not via `mne.Epochs`'s
-  `baseline=` argument): the mean of each trial's own `-0.1s → 0s` window
-  from the **onset** epoch is subtracted from *both* the onset and response
-  epochs, so they share one reference point.
+  `baseline=` argument), and is anchored to the **prompt event (`160`)**,
+  not board onset (`161`). The localizer trial sequence is fixation cross
+  (`162`) → prompt (`160`) → board onset (`161`) → response (`164`), so a
+  baseline window ending at `161` sits directly against the board-onset
+  boundary — vulnerable to trigger jitter and to Stage 1's 1–40 Hz filter
+  smearing the board-onset evoked response backward into it. The baseline is
+  instead the mean of each trial's own `-101ms → -1ms` window relative to
+  `160` — comfortably inside the fixation-cross display, before the prompt
+  (let alone the board) ever appears — subtracted from *both* the onset and
+  response epochs so they share one reference point. (`-101ms` rather than
+  `-100ms`: MNE's epoch windows are inclusive on both ends, so a window
+  ending at exactly `0` would include the sample at the `160` trigger
+  itself.)
 
 ### Main task (`single_subject_ar_v3_main.py`)
 
@@ -173,14 +226,26 @@ repair individual trial/channel combinations.
 
 ### Outputs (in `preprocessing/`)
 
+**Localizer** (`single_subject_ar_v3_independent.py`):
+
 | File | Contents |
 |---|---|
-| `{subj}_localizer_ar_v3_onset-epo.fif` / `_offset-epo.fif` | Cleaned localizer epochs |
+| `{subj}_localizer_ar_v3_independent_onset-epo.fif` | Cleaned onset-locked epochs |
+| `{subj}_localizer_ar_v3_independent_offset-epo.fif` | Cleaned response-locked epochs |
+| `{subj}_localizer_ar_v3_independent_filtered_logfile.csv` | Logfile rows kept, tagged with `include_onset_epoch` / `include_response_epoch` |
+| `{subj}_localizer_ar_v3_independent_rejection_report.p` | Which trials were dropped from each stream, and why |
+| `{subj}_localizer_ar_v3_independent_reject_log_onset.npz` / `_response.npz` | Per-epoch, per-channel AutoReject labels, one file per stream |
+| `{subj}_localizer_ar_v3_independent_cv_loss.pkl` | AutoReject's consensus/n_interpolate grid search results, per stream |
+
+**Main task** (`single_subject_ar_v3_main.py`):
+
+| File | Contents |
+|---|---|
 | `{subj}_main_ar_v3_onset-epo.fif` | Cleaned main-task epochs |
-| `{subj}_{dtype}_ar_v3_filtered_logfile.csv` | Logfile rows kept, incl. `response_sample` |
-| `{subj}_{dtype}_ar_v3_rejection_report.p` | Which trials were dropped, and why |
-| `{subj}_{dtype}_ar_v3_reject_log*.npz` | Per-epoch, per-channel AutoReject labels |
-| `{subj}_{dtype}_ar_v3_cv_loss.pkl` | AutoReject's consensus/n_interpolate grid search results |
+| `{subj}_main_ar_v3_filtered_logfile.csv` | Logfile rows kept, incl. `response_sample` |
+| `{subj}_main_ar_v3_rejection_report.p` | Which trials were dropped, and why |
+| `{subj}_main_ar_v3_reject_log*.npz` | Per-epoch, per-channel AutoReject labels |
+| `{subj}_main_ar_v3_cv_loss.pkl` | AutoReject's consensus/n_interpolate grid search results |
 
 ---
 

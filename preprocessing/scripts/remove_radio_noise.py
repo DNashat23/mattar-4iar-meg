@@ -450,7 +450,13 @@ input('  Review final cleaned data, press Enter to continue...')
 # =============================================================================
 
 print('\nSaving preprocessed data...')
-raw_clean.save(f'{preproc_dir}/{subj}_{dtype}_ICA_no_ocular-raw.fif', overwrite=overwrite)
+# Localizer output is named ICA-raw_final (matching what
+# single_subject_ar_v3_independent.py / _fixation.py and
+# transfer_localizer_files.py already expect); main task keeps
+# ICA_no_ocular-raw (matching single_subject_ar_v3_main.py / _fixation.py
+# and transfer_main_ica.py).
+ica_raw_suffix = 'ICA-raw_final' if dtype == 'localizer' else 'ICA_no_ocular-raw'
+raw_clean.save(f'{preproc_dir}/{subj}_{dtype}_{ica_raw_suffix}.fif', overwrite=overwrite)
 with open(f'{preproc_dir}/{subj}_{dtype}-info.p', 'wb') as f:
     pickle.dump(raw_clean.info, f)
 
