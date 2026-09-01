@@ -18,7 +18,6 @@ import os
 import sys
 import numpy as np
 from autoreject import AutoReject
-from sklearn.preprocessing import LabelEncoder
 
 mne.set_log_level(verbose='WARNING')
 
@@ -70,9 +69,6 @@ BASELINE          = (-0.1, 0)
 FLAT_CRITERIA     = dict(mag=1e-15)
 PHOTODIODE_OFFSET = 60     # samples
 
-le = LabelEncoder()
-le.fit(['none', '2', '2gap', '3', '4'])
-
 # =============================================================================
 # LOAD RAW DATA
 # =============================================================================
@@ -112,8 +108,13 @@ print('  Selecting trials...')
 logfile_main = logfile[logfile['task'] == 'main'].reset_index(drop=True)
 print(f'    Main task trials: {len(logfile_main)}')
 
-# Responded trials: answer_x is NaN when no response was given
-has_response = logfile_main['answer_x'].notna().values
+# Responded trials: rt, answer_x, and answer_y are all NaN together when no
+# response was given — require all three to be present to count as responded.
+has_response = (
+    logfile_main['rt'].notna()
+    & logfile_main['answer_x'].notna()
+    & logfile_main['answer_y'].notna()
+).values
 events_163_responded = events_163[has_response]
 logfile_responded    = logfile_main[has_response].reset_index(drop=True)
 print(f'    Trials with response: {len(logfile_responded)}')
@@ -199,8 +200,6 @@ all_indices  = set(range(len(logfile_responded)))
 good_indices = sorted(all_indices - all_bad)
 
 logfile_final = logfile_responded.iloc[good_indices].reset_index(drop=True)
-logfile_final = logfile_final.copy()
-logfile_final['coded_ground_truth'] = le.transform(logfile_final['ground_truth'])
 
 if len(epochs_clean) != len(logfile_final):
     print(f'ERROR: Mismatch: epochs={len(epochs_clean)}, logfile={len(logfile_final)}')
