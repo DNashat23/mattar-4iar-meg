@@ -53,6 +53,12 @@ does.
 
 Usage:
     python single_subject_ar_v3_independent.py --subject R2649 --base_dir /scratch/djn8068/meg_project/data
+
+0.1 Hz high-pass data (built by lowhp_reconstruct.py --task localizer): pass --reuse_ar_dir <the 1-40 Hz base_dir> to
+apply that run's saved AutoReject decisions (reject_log_{onset,response}.npz) instead of fitting AutoReject again (see
+reuse_autoreject.py), so both streams keep exactly the same trials as the 1-40 Hz run:
+    python single_subject_ar_v3_independent.py --subject R2649 \
+        --base_dir /scratch/djn8068/meg_project/data_lowhp --reuse_ar_dir /scratch/djn8068/meg_project/data
 """
 
 import argparse
@@ -65,6 +71,9 @@ import traceback
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 from autoreject import AutoReject
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from reuse_autoreject import apply_reject_log  # noqa: E402
 
 mne.set_log_level(verbose='WARNING')
 
@@ -79,6 +88,9 @@ parser.add_argument('--subject', type=str, required=True,
 parser.add_argument('--base_dir', type=str,
                     default='/scratch/djn8068/meg_project/data',
                     help='Base directory containing subject folders')
+parser.add_argument('--reuse_ar_dir', type=str, default=None,
+                    help='base_dir of an earlier (1-40 Hz) run: apply its saved AutoReject decisions '
+                         'instead of fitting AutoReject again')
 args = parser.parse_args()
 
 subj     = args.subject
@@ -321,22 +333,28 @@ epochs_response_full._data -= baseline_by_position[baseline_positions_response][
 # =============================================================================
 
 print('\n  Running AutoReject v3 on onset epochs...')
-ar_onset = AutoReject(
-    n_interpolate=[1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
-    consensus=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
-    random_state=42,
-    n_jobs=-1,
-    thresh_method='bayesian_optimization',
-    verbose=True
-)
-epochs_onset_clean, reject_log_onset = ar_onset.fit_transform(
-    epochs_onset_full, return_log=True
-)
+if args.reuse_ar_dir:
+    ar_onset = None
+    epochs_onset_clean, reject_log_onset = apply_reject_log(epochs_onset_full, os.path.join(
+        args.reuse_ar_dir, subj, 'preprocessing', f'{subj}_localizer_ar_v3_independent_reject_log_onset.npz'))
+else:
+    ar_onset = AutoReject(
+        n_interpolate=[1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
+        consensus=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+        random_state=42,
+        n_jobs=-1,
+        thresh_method='bayesian_optimization',
+        verbose=True
+    )
+    epochs_onset_clean, reject_log_onset = ar_onset.fit_transform(
+        epochs_onset_full, return_log=True
+    )
 
 surviving_onset = reject_log_onset.labels[~reject_log_onset.bad_epochs]
 print(f'\n  Onset AutoReject summary:')
-print(f'    Learned n_interpolate: {ar_onset.n_interpolate_}')
-print(f'    Learned consensus: {ar_onset.consensus_}')
+if ar_onset is not None:
+    print(f'    Learned n_interpolate: {ar_onset.n_interpolate_}')
+    print(f'    Learned consensus: {ar_onset.consensus_}')
 print(f'    Epochs dropped: {reject_log_onset.bad_epochs.sum()}')
 print(f'    Max interpolated channels per epoch (surviving): {(surviving_onset == 2).sum(axis=1).max()}')
 print(f'    Max flagged-unfixed channels per epoch (surviving): {(surviving_onset == 1).sum(axis=1).max()}')
@@ -346,22 +364,28 @@ print(f'    Max flagged-unfixed channels per epoch (surviving): {(surviving_onse
 # =============================================================================
 
 print('\n  Running AutoReject v3 on response epochs...')
-ar_response = AutoReject(
-    n_interpolate=[1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
-    consensus=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
-    random_state=42,
-    n_jobs=-1,
-    thresh_method='bayesian_optimization',
-    verbose=True
-)
-epochs_response_clean, reject_log_response = ar_response.fit_transform(
-    epochs_response_full, return_log=True
-)
+if args.reuse_ar_dir:
+    ar_response = None
+    epochs_response_clean, reject_log_response = apply_reject_log(epochs_response_full, os.path.join(
+        args.reuse_ar_dir, subj, 'preprocessing', f'{subj}_localizer_ar_v3_independent_reject_log_response.npz'))
+else:
+    ar_response = AutoReject(
+        n_interpolate=[1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
+        consensus=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+        random_state=42,
+        n_jobs=-1,
+        thresh_method='bayesian_optimization',
+        verbose=True
+    )
+    epochs_response_clean, reject_log_response = ar_response.fit_transform(
+        epochs_response_full, return_log=True
+    )
 
 surviving_response = reject_log_response.labels[~reject_log_response.bad_epochs]
 print(f'\n  Response AutoReject summary:')
-print(f'    Learned n_interpolate: {ar_response.n_interpolate_}')
-print(f'    Learned consensus: {ar_response.consensus_}')
+if ar_response is not None:
+    print(f'    Learned n_interpolate: {ar_response.n_interpolate_}')
+    print(f'    Learned consensus: {ar_response.consensus_}')
 print(f'    Epochs dropped: {reject_log_response.bad_epochs.sum()}')
 print(f'    Max interpolated channels per epoch (surviving): {(surviving_response == 2).sum(axis=1).max()}')
 print(f'    Max flagged-unfixed channels per epoch (surviving): {(surviving_response == 1).sum(axis=1).max()}')
@@ -478,7 +502,7 @@ loss_data = {
         'best_consensus':     float(ar_response.consensus_['mag']),
         'best_n_interpolate': int(ar_response.n_interpolate_['mag']),
     }
-}
+} if not args.reuse_ar_dir else {'reused_ar_dir': args.reuse_ar_dir}  # --reuse_ar_dir: nothing was fitted
 with open(cv_loss_path, 'wb') as f:
     pickle.dump(loss_data, f)
 print(f"  Saved: {cv_loss_path}")

@@ -58,6 +58,12 @@ fixated on; only the BASELINE anchor moved, not the fixation-timing anchor.
 
 Usage:
     python single_subject_ar_v3_independent_fixation.py --subject R2649 --base_dir /scratch/djn8068/meg_project/data
+
+0.1 Hz high-pass data (built by lowhp_reconstruct.py --task localizer): pass --reuse_ar_dir <the 1-40 Hz base_dir> to
+apply that run's saved AutoReject decisions (reject_log_{onset,median,offset}.npz) instead of fitting AutoReject again
+(see reuse_autoreject.py), so every stream keeps exactly the same fixation epochs as the 1-40 Hz run:
+    python single_subject_ar_v3_independent_fixation.py --subject R2649 \
+        --base_dir /scratch/djn8068/meg_project/data_lowhp --reuse_ar_dir /scratch/djn8068/meg_project/data
 """
 
 import argparse
@@ -71,6 +77,9 @@ import pandas as pd
 import mne
 from sklearn.preprocessing import LabelEncoder
 from autoreject import AutoReject
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from reuse_autoreject import apply_reject_log  # noqa: E402
 
 mne.set_log_level(verbose='WARNING')
 
@@ -93,6 +102,9 @@ parser.add_argument('--debug', action='store_true',
                     help='Stop before AutoReject (which is slow) -- run everything through '
                          'event matching, fixation filtering, epoch construction, and baseline, '
                          'print diagnostics, and save *_DEBUG-epo.fif files for manual inspection')
+parser.add_argument('--reuse_ar_dir', type=str, default=None,
+                    help='base_dir of an earlier (1-40 Hz) run: apply its saved AutoReject decisions '
+                         'instead of fitting AutoReject again')
 args = parser.parse_args()
 
 subj     = args.subject
@@ -449,19 +461,25 @@ for ftype in FIXATION_TYPES:
         print(f'    [DEBUG] Saved: {debug_path}')
         continue
 
-    print(f'    Running AutoReject on {len(ep_full)} {ftype} epochs...')
-    ar = AutoReject(
-        n_interpolate=[1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
-        consensus=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
-        random_state=42,
-        n_jobs=-1,
-        thresh_method='bayesian_optimization',
-        verbose=True
-    )
-    ep_clean, reject_log = ar.fit_transform(ep_full, return_log=True)
+    if args.reuse_ar_dir:
+        ar = None
+        ep_clean, reject_log = apply_reject_log(ep_full, os.path.join(
+            args.reuse_ar_dir, subj, 'preprocessing',
+            f'{subj}_localizer_ar_v3_independent_fixation_reject_log_{ftype}.npz'))
+    else:
+        print(f'    Running AutoReject on {len(ep_full)} {ftype} epochs...')
+        ar = AutoReject(
+            n_interpolate=[1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
+            consensus=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+            random_state=42,
+            n_jobs=-1,
+            thresh_method='bayesian_optimization',
+            verbose=True
+        )
+        ep_clean, reject_log = ar.fit_transform(ep_full, return_log=True)
 
-    print(f'    Learned n_interpolate: {ar.n_interpolate_}')
-    print(f'    Learned consensus: {ar.consensus_}')
+        print(f'    Learned n_interpolate: {ar.n_interpolate_}')
+        print(f'    Learned consensus: {ar.consensus_}')
     print(f'    Epochs dropped: {reject_log.bad_epochs.sum()}')
     print(f'    Final {ftype} epoch count: {len(ep_clean)}')
 
@@ -517,13 +535,16 @@ for ftype in FIXATION_TYPES:
 
     n_interpolate_grid = np.array([1, 2, 4, 8, 12, 16, 20, 24, 28, 32])
     consensus_grid      = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
-    loss_data[ftype] = {
-        'loss':               ar.loss_['mag'],
-        'consensus':          consensus_grid,
-        'n_interpolate':      n_interpolate_grid,
-        'best_consensus':     float(ar.consensus_['mag']),
-        'best_n_interpolate': int(ar.n_interpolate_['mag']),
-    }
+    if ar is None:  # --reuse_ar_dir: nothing was fitted
+        loss_data[ftype] = {'reused_ar_dir': args.reuse_ar_dir}
+    else:
+        loss_data[ftype] = {
+            'loss':               ar.loss_['mag'],
+            'consensus':          consensus_grid,
+            'n_interpolate':      n_interpolate_grid,
+            'best_consensus':     float(ar.consensus_['mag']),
+            'best_n_interpolate': int(ar.n_interpolate_['mag']),
+        }
 
     log_path = os.path.join(
         preproc_dir, f'{subj}_localizer_ar_v3_independent_fixation_reject_log_{ftype}.npz')
